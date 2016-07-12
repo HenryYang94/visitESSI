@@ -263,6 +263,16 @@ avtvisitESSIFileFormat::PopulateDatabaseMetaData(avtDatabaseMetaData *md, int ti
 
     AddVectorVarToMetaData(md, varname, mainmesh, cent, vector_dim);
 
+    // Han, 5-25-16
+    // Variables about energy
+    varname = "Element Average Total Energy Density";
+    cent = AVT_ZONECENT;
+    AddScalarVarToMetaData(md, varname, mainmesh, cent);
+
+    varname = "Strain Energy Density (at Gauss points)";
+    cent = AVT_NODECENT;
+    AddScalarVarToMetaData(md, varname, gaussmesh, cent);
+
 
     //
     // CODE TO ADD A VECTOR VARIABLE
@@ -1184,6 +1194,203 @@ avtvisitESSIFileFormat::GetVar(int timestate, int domain, const char *varname)
         //////////////////////////////////
         ////////////////////////////////////////////
     }
+
+    else if (strcmp(varname, "Element Average Total Energy Density") == 0)
+    {
+        GO_HERE << "Han visitESSI: Getting Total_Energy_Density_Element_Average. \n\n";
+
+        //Open up energy file
+        openEnergyFile();
+
+        //Open up Total_Energy_Density_Element_Average for reading
+        hid_t id_TEnergy_avg_dataset = H5Dopen2(id_file_energy, "/Energy_Density/Total_Energy_Density_Element_Average", H5P_DEFAULT);
+        hid_t id_TEnergy_avg_dataspace = H5Dget_space(id_TEnergy_avg_dataset);
+
+        int TEnergy_avg_ndims = H5Sget_simple_extent_ndims(id_TEnergy_avg_dataspace);
+        hsize_t dims[TEnergy_avg_ndims];
+        hsize_t maxdims[TEnergy_avg_ndims];
+        H5Sget_simple_extent_dims(id_TEnergy_avg_dataspace, dims, maxdims );
+
+
+        //Create description of data in memory
+        hsize_t datadims[1] = {dims[0]};
+        hid_t memspace  = H5Screate_simple(1, datadims, datadims);
+
+        // GO_HERE << "dims[0] = " << dims[0] << endl;
+
+        //Try to get all the displacements now
+        float *total_energy_density_eleavg = new float[dims[0]];
+
+        const hsize_t start[2] = {0, timestate};
+        const hsize_t stride[2] = {1, 1};
+        const hsize_t count[2] = {dims[0], 1};
+        const hsize_t block[2] = {1, 1};
+
+        H5Sselect_hyperslab( id_TEnergy_avg_dataspace, H5S_SELECT_SET, start, stride, count, block );
+        H5Dread(id_TEnergy_avg_dataset, H5T_NATIVE_FLOAT, memspace   , id_TEnergy_avg_dataspace, H5P_DEFAULT, total_energy_density_eleavg);
+
+        //Cleanup
+        H5Dclose(id_TEnergy_avg_dataset);
+        H5Sclose(id_TEnergy_avg_dataspace);
+        H5Sclose(memspace);
+
+        //Open up Index_to_Energy_Density_Element_Average for reading
+        hid_t id_index_TEnergy_avg_dataset = H5Dopen2(id_file_energy, "/Energy_Density/Index_to_Energy_Density_Element_Average", H5P_DEFAULT);
+        hid_t id_index_TEnergy_avg_dataspace = H5Dget_space(id_index_TEnergy_avg_dataset);
+
+        int index_TEnergy_avg_ndims = H5Sget_simple_extent_ndims(id_index_TEnergy_avg_dataspace);
+        hsize_t index_dims[index_TEnergy_avg_ndims];
+        hsize_t index_maxdims[index_TEnergy_avg_ndims];
+        H5Sget_simple_extent_dims(id_index_TEnergy_avg_dataspace, index_dims, index_maxdims);
+
+
+        //Create description of data in memory
+        hsize_t index_datadims[1] = {index_dims[0]};
+        hid_t index_memspace  = H5Screate_simple(1, index_datadims, index_datadims);
+
+        // GO_HERE << "dims[0] = " << dims[0] << endl;
+
+        //Try to get all the displacements now
+        int *index_total_energy_density_eleavg = new int[index_dims[0]];
+
+        H5Dread(id_index_TEnergy_avg_dataset, H5T_NATIVE_INT, index_memspace, id_index_TEnergy_avg_dataspace, H5P_DEFAULT, index_total_energy_density_eleavg);
+
+        //Cleanup
+        H5Dclose(id_index_TEnergy_avg_dataset);
+        H5Sclose(id_index_TEnergy_avg_dataspace);
+        H5Sclose(index_memspace);
+
+        //GO_HERE << "Han visitESSI: Pushing data to VTK\n";
+
+        //Push the data to VTK
+        vtkFloatArray *rv_float = vtkFloatArray::New();
+        rv_float->SetNumberOfTuples(ncells[domain]);
+        
+        for (int tag = 0 ; tag < index_dims[0] ; tag++)
+        {
+            GO_HERE << index_total_energy_density_eleavg[tag] << " " << domain << " " << tag << endl;
+
+            if (index_total_energy_density_eleavg[tag] >= 0)
+            {
+               rv_float->SetTuple1(index_total_energy_density_eleavg[tag], total_energy_density_eleavg[index_total_energy_density_eleavg[tag]]);
+               GO_HERE << total_energy_density_eleavg[tag] << endl;
+            }
+        }
+        delete [] total_energy_density_eleavg;
+        total_energy_density_eleavg = 0;
+
+        GO_HERE << "Han visitESSI: Visualize \"Element Total Energy Density\" is HODOR!\n";
+        
+        return rv_float;
+    }
+
+
+    else if (strcmp(varname, "Strain Energy Density (at Gauss points)") == 0)
+    {
+        GO_HERE << "Han visitESSI: Getting Strain_Energy_Density. \n\n";
+
+        //Open up energy file
+        openEnergyFile();
+
+        //Open up Strain_Energy_Density for reading
+        hid_t id_SEnergy_dataset = H5Dopen2(id_file_energy, "/Energy_Density/Strain_Energy_Density", H5P_DEFAULT);
+        hid_t id_SEnergy_dataspace = H5Dget_space(id_SEnergy_dataset);
+
+        int SEnergy_ndims = H5Sget_simple_extent_ndims(id_SEnergy_dataspace);
+        hsize_t SEnergy_dims[SEnergy_ndims];
+        hsize_t SEnergy_max_dims[SEnergy_ndims];
+        H5Sget_simple_extent_dims(id_SEnergy_dataspace, SEnergy_dims, SEnergy_max_dims);
+
+        //Create description of data in memory
+        hsize_t datadims[1] = {SEnergy_dims[0]};
+        hid_t memspace  = H5Screate_simple(1, datadims, datadims);
+
+        // GO_HERE << "dims[0] = " << dims[0] << endl;
+
+        float *strain_energy_density = new float[SEnergy_dims[0]];
+
+        hsize_t start[2] = {0, timestate};
+        hsize_t stride[2] = {1, 1};
+        hsize_t count[2] = {SEnergy_dims[0], 1};
+        hsize_t block[2] = {1, 1};
+
+        H5Sselect_hyperslab(id_SEnergy_dataspace, H5S_SELECT_SET, start, stride, count, block );
+        H5Dread(id_SEnergy_dataset, H5T_NATIVE_FLOAT, memspace, id_SEnergy_dataspace, H5P_DEFAULT, strain_energy_density);
+
+        //Cleanup
+        H5Dclose(id_SEnergy_dataset);
+        H5Sclose(id_SEnergy_dataspace);
+        H5Sclose(memspace);
+
+        //GO_HERE << "Han visitESSI: Strain_Energy_Density is read. \n\n";
+
+        
+        //Open up index_SEnergy_dataset for reading
+        hid_t id_index_SEnergy_dataset = H5Dopen2(id_file_energy, "/Energy_Density/Index_to_Strain_Energy_Density", H5P_DEFAULT);
+        hid_t id_index_SEnergy_dataspace = H5Dget_space(id_index_SEnergy_dataset);
+
+        int index_SEnergy_ndims = H5Sget_simple_extent_ndims(id_index_SEnergy_dataspace);
+        //GO_HERE << "index_SEnergy_ndims = " << index_SEnergy_ndims << endl;
+
+        hsize_t index_SEnergy_dims[index_SEnergy_ndims];
+        hsize_t index_SEnergy_max_dims[index_SEnergy_ndims];
+        H5Sget_simple_extent_dims(id_index_SEnergy_dataspace, index_SEnergy_dims, index_SEnergy_max_dims);
+
+        //Create description of data in memory
+        datadims[0] = index_SEnergy_dims[0];
+        memspace  = H5Screate_simple(1, datadims, datadims);
+
+        //GO_HERE << "dims[0] = " << index_SEnergy_dims[0] << endl;
+
+        int *index_strain_energy_density = new int[index_SEnergy_dims[0]];
+
+        start[0]  = 0; start[1]  = 0;
+        stride[0] = 1; stride[1] = 1;
+        count[0]  = index_SEnergy_dims[0]; count[1]  = 1;
+        block[0]  = 1; block[1]  = 1;
+
+        H5Sselect_hyperslab(id_index_SEnergy_dataspace, H5S_SELECT_SET, start, stride, count, block );
+        H5Dread(id_index_SEnergy_dataset, H5T_NATIVE_INT, memspace, id_index_SEnergy_dataspace, H5P_DEFAULT, index_strain_energy_density);
+
+        //Cleanup
+        H5Dclose(id_index_SEnergy_dataset);
+        H5Sclose(id_index_SEnergy_dataspace);
+        H5Sclose(memspace);
+
+        //GO_HERE << "Han visitESSI: Index_to_Strain_Energy_Density is read. \n\n";
+
+        //GO_HERE << "Han visitESSI: Pushing strain energy density data to VTK\n";
+
+        //Push the data to VTK
+        vtkFloatArray *rv_float = vtkFloatArray::New();
+        rv_float->SetNumberOfTuples(ngauss[domain]);
+        
+        //GO_HERE << "Han visitESSI: 1 " << ngauss[domain] << endl;
+
+        for (int element_tag = 0; element_tag < index_SEnergy_dims[0]; element_tag++)
+        {
+            //GO_HERE << "Han visitESSI: element_tag =" << element_tag << endl;
+            if (index_strain_energy_density[element_tag] >= 0)
+            {
+                for (int element_GP_tag = 0; element_GP_tag < m_number_of_gauss_points[domain][element_tag]; element_GP_tag++)
+                {
+                    int pos = index_strain_energy_density[element_tag] + element_GP_tag;
+                    //GO_HERE << "Han visitESSI: 111 =" << index_strain_energy_density[element_tag] << endl;
+                    //GO_HERE << "Han visitESSI: pos =" << pos << endl;
+                    rv_float->SetTuple1(pos, strain_energy_density[pos]);
+                }              
+            }
+        }
+        delete [] strain_energy_density;
+        //delete [] index_strain_energy_density;
+        strain_energy_density = 0;
+        //index_strain_energy_density = 0;
+
+        GO_HERE << "Han visitESSI: Visualize \"Strain Energy Density (at Gauss points)\" is HODOR!\n";
+        
+        return rv_float;
+    }
+
     else
     {
         EXCEPTION1(InvalidVariableException, varname);
@@ -1871,5 +2078,30 @@ avtvisitESSIFileFormat::openSubdomainNumber(int domain)
                 &nnodes[domain]);
         H5Dclose(id_num_nodes);
         H5Sclose(id_num_nodes_dataspace);
+    }
+}
+
+void avtvisitESSIFileFormat::openEnergyFile()
+{
+    if (id_file > 0)
+    {
+        std::string energy_filename = filename_string;
+
+        size_t f = energy_filename.find(".feioutput");
+        energy_filename.replace(f, std::string(".feioutput").length(), ".feipost");
+
+        GO_HERE << "Han visitESSI: Opening " << energy_filename << endl;
+        id_file_energy = H5Fopen( energy_filename.c_str(), H5F_ACC_RDONLY, H5P_DEFAULT);
+
+        if (id_file_energy < 0)
+        {
+            GO_HERE << "visitESSI : Could not open file.\n\n";
+            EXCEPTION1(InvalidDBTypeException,
+                       "The file could not be opened");
+        }
+        else
+        {
+            GO_HERE << "Han visitESSI: \"Opening of energy file is HODOR!\"" << endl;
+        }
     }
 }

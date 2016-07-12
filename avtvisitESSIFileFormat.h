@@ -127,6 +127,8 @@ protected:
     void
     openSubdomainNumber(int domain);
 
+    void openEnergyFile();
+
     virtual void           PopulateDatabaseMetaData(avtDatabaseMetaData *, int);
 private:
     std::string filename_string;
@@ -138,6 +140,8 @@ private:
     int nsteps;
     int number_of_processes;
     int process_number;
+
+    hid_t id_file_energy;
 
     int max_ele_tag;
     int max_node_tag;
